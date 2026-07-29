@@ -7,6 +7,7 @@ from .diagram import Diagram
 
 SECTION_BY_RESULT = {
     "embedding_x": "EMBEDDING",
+    "x": "BLOCK INPUT",
     "x_norm": "ATTENTION",
     "k": "ATTENTION",
     "k_norm": "ATTENTION",
@@ -33,6 +34,7 @@ SECTION_BY_RESULT = {
 
 OPERATION_BY_RESULT = {
     "embedding_x": "Token embedding",
+    "x": "Route hidden state into block",
     "x_norm": "Attention RMSNorm",
     "k": "K projection",
     "k_norm": "K per-head RMSNorm",
@@ -76,6 +78,10 @@ def equation_for(diagram: Diagram, result: str) -> str:
         "embedding_x": (
             f"{shape('embedding_x')} = {shape('token_embedding')} × "
             f"{shape('token_one_hot')}"
+        ),
+        "x": (
+            f"{shape('x')} = {shape('embedding_x')} if b=0; "
+            f"Block(b−1) output otherwise"
         ),
         "x_norm": (
             f"{shape('x_norm')} = RMSNorm({shape('x')}; {shape('gamma')})"
@@ -143,6 +149,7 @@ def tensor_source_for(diagram: Diagram, result: str) -> str:
     bias = config.qkv_bias
     sources = {
         "embedding_x": "token_embd.weight",
+        "x": "none (runtime activation routing)",
         "x_norm": "blk.b.attn_norm.weight",
         "k": (
             "blk.b.attn_k.weight + blk.b.attn_k.bias"

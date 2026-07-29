@@ -156,13 +156,13 @@ class FinalV1Tests(unittest.TestCase):
         self.assertIn(
             "DeepSeek-R1 Distill (Qwen3) Block b ×36", qwen_render
         )
-        self.assertEqual(qwen_card[0], "[01/23] EMBEDDING")
+        self.assertEqual(qwen_card[0], "[01/24] EMBEDDING")
 
         self.assertTrue(llama.is_deepseek_r1_distill)
         self.assertEqual(llama.architecture, "llama")
         self.assertEqual(llama.backbone_name, "Llama")
         self.assertFalse(llama.qk_norm)
-        self.assertEqual(len(build_diagram(llama).operations), 21)
+        self.assertEqual(len(build_diagram(llama).operations), 22)
 
     def test_annotation_titles_do_not_repeat_model_identity(self) -> None:
         base = config_from_gguf(_qwen3_model())
@@ -174,7 +174,7 @@ class FinalV1Tests(unittest.TestCase):
                     is_deepseek_r1_distill=False,
                 )
                 title = card_lines(build_diagram(config), 0)[0]
-                self.assertEqual(title, "[01/23] EMBEDDING")
+                self.assertEqual(title, "[01/24] EMBEDDING")
 
     def test_native_deepseek_architecture_is_not_guessed(self) -> None:
         base = _qwen3_model()
@@ -196,10 +196,10 @@ class FinalV1Tests(unittest.TestCase):
         rendered = render_diagram(diagram, step).render(use_color=False)
 
         self.assertEqual(config.attention_kind, "GQA")
-        self.assertEqual(len(diagram.operations), 23)
+        self.assertEqual(len(diagram.operations), 24)
         self.assertEqual(diagram.height_for("seq"), 7)
         self.assertEqual(diagram.height_for("151936"), 7)
-        self.assertEqual(lines[0], "[04/23] ATTENTION")
+        self.assertEqual(lines[0], "[05/24] ATTENTION")
         self.assertIn("K′[128×seq]", lines[2])
         self.assertEqual(
             lines[3],
@@ -219,6 +219,40 @@ class FinalV1Tests(unittest.TestCase):
         self.assertIn(
             "Hᵢⱼ[128×seq] = V[128×seq] × A[seq×seq]",
             card_lines(diagram, head_step)[2],
+        )
+        self.assertIn(
+            "X₀[4096×seq] = E[4096×151936] × T[151936×seq]",
+            card_lines(diagram, 0)[2],
+        )
+        block_input_step = result_keys.index("x")
+        block_input_card = card_lines(diagram, block_input_step)
+        self.assertEqual(block_input_card[0], "[02/24] BLOCK INPUT")
+        self.assertEqual(
+            block_input_card[1],
+            "Operation: Route hidden state into block",
+        )
+        self.assertIn(
+            "Xᵦ[4096×seq] = X₀[4096×seq] if b=0; "
+            "Block(b−1) output otherwise",
+            block_input_card[2],
+        )
+        self.assertEqual(
+            block_input_card[3],
+            "Tensor source: none (runtime activation routing)",
+        )
+        self.assertEqual(
+            diagram.operations[block_input_step].matrices,
+            frozenset({"embedding_x", "x"}),
+        )
+        norm_step = result_keys.index("x_norm")
+        self.assertIn(
+            "Xᵦ′[4096×seq] = RMSNorm(Xᵦ[4096×seq]",
+            card_lines(diagram, norm_step)[2],
+        )
+        output_step = result_keys.index("x_out")
+        self.assertIn(
+            "Xᵦ₊₁[4096×seq] = R[4096×seq] + M[4096×seq]",
+            card_lines(diagram, output_step)[2],
         )
         self.assertIn(" Qwen3 Block b ×36 ", rendered)
         self.assertIn(" Head end ┘", rendered)
@@ -262,7 +296,7 @@ class FinalV1Tests(unittest.TestCase):
 
         self.assertLess(below.width, beside.width)
         self.assertGreater(below.height, beside.height)
-        self.assertIn("[01/23] EMBEDDING", below_text)
+        self.assertIn("[01/24] EMBEDDING", below_text)
         self.assertIn("Tensor source: token_embd.weight", below_text)
 
     def test_narrow_viewport_keeps_annotation_visible(self) -> None:
@@ -277,7 +311,7 @@ class FinalV1Tests(unittest.TestCase):
 
         self.assertNotIn("Widen the window", frame)
         self.assertTrue(frame.startswith("GGUF: synthetic-qwen3.gguf\n"))
-        self.assertIn("[01/23] EMBEDDING", frame)
+        self.assertIn("[01/24] EMBEDDING", frame)
         self.assertIn("Tensor source: token_embd.weight", frame)
         self.assertIn(
             "Tip: widen the terminal to place annotations beside the diagram.",

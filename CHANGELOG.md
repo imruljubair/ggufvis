@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+- Dedicated block-input navigation step highlighting `X₀ → Xᵦ`
+- Block-input annotation explains the first-block and previous-block cases
+
+## 1.3.2
+
+- Layer-aware hidden-state notation: embedding output `X₀`, generic block input
+  `Xᵦ`, normalized input `Xᵦ′`, and block output `Xᵦ₊₁`
+
 ## 1.3.1
 
 - Conventional attention notation: `S` for raw scores and `A` for the

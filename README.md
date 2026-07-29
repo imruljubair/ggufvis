@@ -226,7 +226,7 @@ reuses the calculated sequence height.
 Every operation uses the same four fields:
 
 ```text
-┌─ [04/23] ATTENTION ────────────────────────────────────┐
+┌─ [05/24] ATTENTION ────────────────────────────────────┐
 │ Operation: K per-head RMSNorm                          │
 │ Equation: K′[128×seq] = RMSNorm(K[128×seq]; γk[128×1]) │
 │ Tensor source: blk.b.attn_k_norm.weight                │
@@ -235,6 +235,12 @@ Every operation uses the same four fields:
 
 `blk.b` means the corresponding tensor in each repeated transformer block.
 Parameter-free operations say `none (parameter-free)`.
+
+Hidden-state labels distinguish the embedding result from the repeated block
+dataflow: `X₀` is the embedding output, `Xᵦ` enters generic block `b`, and
+`Xᵦ₊₁` leaves it for the next block. A dedicated block-input step highlights
+`X₀ → Xᵦ` and explains that `Xᵦ` comes from `X₀` when `b=0`, or from block
+`b−1` otherwise.
 
 ## Tests
 

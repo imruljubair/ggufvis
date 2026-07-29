@@ -218,19 +218,25 @@ def build_diagram(config: ModelConfig) -> Diagram:
         ),
         Matrix(
             "embedding_x",
-            "X",
+            "X₀",
             right_x,
             embedding_result_y,
             "seq",
             hidden,
             EMBEDDING_BACKGROUND,
         ),
-        Matrix("x", "X", right_x, y_x, "seq", hidden, BLOCK_BACKGROUND),
+        Matrix("x", "Xᵦ", right_x, y_x, "seq", hidden, BLOCK_BACKGROUND),
         Matrix(
             "gamma", "γ", left_x("1"), y_norm, "1", hidden, BLOCK_BACKGROUND
         ),
         Matrix(
-            "x_norm", "X′", right_x, y_norm, "seq", hidden, BLOCK_BACKGROUND
+            "x_norm",
+            "Xᵦ′",
+            right_x,
+            y_norm,
+            "seq",
+            hidden,
+            BLOCK_BACKGROUND,
         ),
         Matrix(
             "wk",
@@ -465,7 +471,7 @@ def build_diagram(config: ModelConfig) -> Diagram:
             Matrix("y", "Y", right_x, y_wo, "seq", hidden, BLOCK_BACKGROUND),
             Matrix(
                 "x_residual",
-                "X",
+                "Xᵦ",
                 left_x("seq"),
                 y_residual,
                 "seq",
@@ -537,7 +543,7 @@ def build_diagram(config: ModelConfig) -> Diagram:
             ),
             Matrix(
                 "x_out",
-                "Xout",
+                "Xᵦ₊₁",
                 right_x,
                 y_block_residual,
                 "seq",
@@ -586,6 +592,11 @@ def build_diagram(config: ModelConfig) -> Diagram:
             "embedding_x",
             embedding_result_y + 2,
             frozenset({"token_embedding", "token_one_hot", "embedding_x"}),
+        ),
+        Operation(
+            "x",
+            y_x + 2,
+            frozenset({"embedding_x", "x"}),
         ),
         Operation(
             "x_norm",
