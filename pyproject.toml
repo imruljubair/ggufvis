@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ggufvis"
+version = "1.0.0"
+description = "Metadata-driven terminal matrix visualization for GGUF models"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "All rights reserved"}
+keywords = ["gguf", "ollama", "llama", "qwen", "terminal", "visualization"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = []
+
+[project.scripts]
+ggufvis = "ggufvis.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/imruljubair/ggufvis"
+Repository = "https://github.com/imruljubair/ggufvis"
+Issues = "https://github.com/imruljubair/ggufvis/issues"
+
+[tool.setuptools.packages.find]
+include = ["ggufvis*"]
