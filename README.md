@@ -29,17 +29,33 @@ tensor that supplies its parameters.
 
 ### TinyLlama attention
 
+```bash
+python3 ggufvis.py --ollama tinyllama
+```
+
 ![ggufvis visualizing TinyLlama attention RMSNorm](<docs/images/Screenshot 2026-07-29 at 4.16.15 AM.png>)
 
 ### TinyLlama feed-forward network
+
+```bash
+python3 ggufvis.py --ollama tinyllama
+```
 
 ![ggufvis visualizing TinyLlama's MLP gate projection](<docs/images/Screenshot 2026-07-29 at 4.16.27 AM.png>)
 
 ### Gemma attention
 
+```bash
+python3 ggufvis.py --ollama gemma
+```
+
 ![ggufvis visualizing Gemma's attention K projection](<docs/images/Screenshot 2026-07-29 at 4.16.42 AM.png>)
 
 ### Remote GGUF
+
+```bash
+python3 ggufvis.py --url "https://huggingface.co/ggml-org/models-moved/blob/main/tinyllamas/stories15M-q4_0.gguf"
+```
 
 ![ggufvis visualizing a GGUF directly from a Hugging Face URL](<docs/images/Screenshot 2026-07-29 at 4.17.19 AM.png>)
 
