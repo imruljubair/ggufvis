@@ -22,6 +22,27 @@ weights into memory.
 - In-memory visualization from public HTTP/Hugging Face links through `--url`
 - No runtime dependencies outside the Python standard library
 
+## Sample views
+
+Step through the model to highlight each operation, its equation, and the GGUF
+tensor that supplies its parameters.
+
+### TinyLlama attention
+
+![ggufvis visualizing TinyLlama attention RMSNorm](<docs/images/Screenshot 2026-07-29 at 4.16.15 AM.png>)
+
+### TinyLlama feed-forward network
+
+![ggufvis visualizing TinyLlama's MLP gate projection](<docs/images/Screenshot 2026-07-29 at 4.16.27 AM.png>)
+
+### Gemma attention
+
+![ggufvis visualizing Gemma's attention K projection](<docs/images/Screenshot 2026-07-29 at 4.16.42 AM.png>)
+
+### Remote GGUF
+
+![ggufvis visualizing a GGUF directly from a Hugging Face URL](<docs/images/Screenshot 2026-07-29 at 4.17.19 AM.png>)
+
 ## Run
 
 Clone the repository and run directly:
