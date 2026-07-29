@@ -356,7 +356,7 @@ def build_diagram(config: ModelConfig) -> Diagram:
             ),
             Matrix(
                 "a",
-                "A",
+                "S",
                 right_x,
                 y_attention,
                 "seq",
@@ -365,7 +365,7 @@ def build_diagram(config: ModelConfig) -> Diagram:
             ),
             Matrix(
                 "a_softmax",
-                "A′",
+                "A",
                 right_x,
                 y_softmax,
                 "seq",

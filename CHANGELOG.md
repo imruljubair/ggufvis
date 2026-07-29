@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1
+
+- Conventional attention notation: `S` for raw scores and `A` for the
+  causal-softmax attention weights
+
+## 1.3.0
+
+- One persistent, source-aware header above the visualization
+- Local filename, Ollama tag, or remote filename selected automatically
+- Middle truncation of long source names on narrow terminals
+- Model-family text removed from annotation-card titles to avoid repetition
+
 ## 1.2.1
 
 - Model-family identity on every annotation-card title

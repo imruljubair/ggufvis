@@ -13,7 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from ggufvis.cli import _viewport
+from ggufvis.cli import _fit_header, _source_header, _viewport
 from ggufvis.annotations import card_lines
 from ggufvis.diagram import build_diagram
 from ggufvis.gguf import GGUFError, GGUFModel, TensorInfo, read_gguf_url
@@ -156,10 +156,7 @@ class FinalV1Tests(unittest.TestCase):
         self.assertIn(
             "DeepSeek-R1 Distill (Qwen3) Block b ×36", qwen_render
         )
-        self.assertEqual(
-            qwen_card[0],
-            "[01/23] EMBEDDING · DEEPSEEK-R1 DISTILL · QWEN3 BACKBONE",
-        )
+        self.assertEqual(qwen_card[0], "[01/23] EMBEDDING")
 
         self.assertTrue(llama.is_deepseek_r1_distill)
         self.assertEqual(llama.architecture, "llama")
@@ -167,16 +164,9 @@ class FinalV1Tests(unittest.TestCase):
         self.assertFalse(llama.qk_norm)
         self.assertEqual(len(build_diagram(llama).operations), 21)
 
-    def test_regular_models_show_their_family_on_annotation_cards(self) -> None:
+    def test_annotation_titles_do_not_repeat_model_identity(self) -> None:
         base = config_from_gguf(_qwen3_model())
-        expected = {
-            "llama": "LLAMA",
-            "gemma": "GEMMA",
-            "qwen2": "QWEN2",
-            "qwen3": "QWEN3",
-        }
-
-        for architecture, identity in expected.items():
+        for architecture in ("llama", "gemma", "qwen2", "qwen3"):
             with self.subTest(architecture=architecture):
                 config = replace(
                     base,
@@ -184,7 +174,7 @@ class FinalV1Tests(unittest.TestCase):
                     is_deepseek_r1_distill=False,
                 )
                 title = card_lines(build_diagram(config), 0)[0]
-                self.assertEqual(title, f"[01/23] EMBEDDING · {identity}")
+                self.assertEqual(title, "[01/23] EMBEDDING")
 
     def test_native_deepseek_architecture_is_not_guessed(self) -> None:
         base = _qwen3_model()
@@ -209,11 +199,26 @@ class FinalV1Tests(unittest.TestCase):
         self.assertEqual(len(diagram.operations), 23)
         self.assertEqual(diagram.height_for("seq"), 7)
         self.assertEqual(diagram.height_for("151936"), 7)
-        self.assertEqual(lines[0], "[04/23] ATTENTION · QWEN3")
+        self.assertEqual(lines[0], "[04/23] ATTENTION")
         self.assertIn("K′[128×seq]", lines[2])
         self.assertEqual(
             lines[3],
             "Tensor source: blk.b.attn_k_norm.weight",
+        )
+        score_step = result_keys.index("a")
+        attention_step = result_keys.index("a_softmax")
+        head_step = result_keys.index("h")
+        self.assertIn(
+            "S[seq×seq] = Kᵣᵀ[seq×128] × Qᵣ[128×seq]",
+            card_lines(diagram, score_step)[2],
+        )
+        self.assertIn(
+            "A[seq×seq] = softmax(S[seq×seq]/√128 + Mᶜ)",
+            card_lines(diagram, attention_step)[2],
+        )
+        self.assertIn(
+            "Hᵢⱼ[128×seq] = V[128×seq] × A[seq×seq]",
+            card_lines(diagram, head_step)[2],
         )
         self.assertIn(" Qwen3 Block b ×36 ", rendered)
         self.assertIn(" Head end ┘", rendered)
@@ -257,7 +262,7 @@ class FinalV1Tests(unittest.TestCase):
 
         self.assertLess(below.width, beside.width)
         self.assertGreater(below.height, beside.height)
-        self.assertIn("[01/23] EMBEDDING · QWEN3", below_text)
+        self.assertIn("[01/23] EMBEDDING", below_text)
         self.assertIn("Tensor source: token_embd.weight", below_text)
 
     def test_narrow_viewport_keeps_annotation_visible(self) -> None:
@@ -266,15 +271,38 @@ class FinalV1Tests(unittest.TestCase):
             "ggufvis.cli.shutil.get_terminal_size",
             return_value=os.terminal_size((81, 30)),
         ):
-            frame, _ = _viewport(diagram, 0, False, None)
+            frame, _ = _viewport(
+                diagram, 0, False, None, "GGUF: synthetic-qwen3.gguf"
+            )
 
         self.assertNotIn("Widen the window", frame)
-        self.assertIn("[01/23] EMBEDDING · QWEN3", frame)
+        self.assertTrue(frame.startswith("GGUF: synthetic-qwen3.gguf\n"))
+        self.assertIn("[01/23] EMBEDDING", frame)
         self.assertIn("Tensor source: token_embd.weight", frame)
         self.assertIn(
             "Tip: widen the terminal to place annotations beside the diagram.",
             frame,
         )
+
+    def test_source_header_is_adaptive_and_source_aware(self) -> None:
+        local = _source_header("/models/llama.gguf")
+        ollama = _source_header("deepseek-r1:8b", is_ollama=True)
+        remote = _source_header(
+            "https://huggingface.co/a/b/resolve/main/"
+            "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            is_remote=True,
+        )
+
+        self.assertEqual(local, "GGUF: llama.gguf")
+        self.assertEqual(ollama, "Ollama: deepseek-r1:8b")
+        self.assertEqual(
+            remote,
+            "Remote: DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        )
+        fitted = _fit_header(remote, 30)
+        self.assertEqual(len(fitted), 30)
+        self.assertIn("…", fitted)
+        self.assertTrue(fitted.endswith("Q4_K_M.gguf"))
 
     def test_mha_and_mqa_have_clean_non_nested_labels(self) -> None:
         base = config_from_gguf(_qwen3_model())

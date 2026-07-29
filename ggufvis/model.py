@@ -78,17 +78,6 @@ class ModelConfig:
             "qwen3": "Qwen3",
         }[self.architecture]
 
-    @property
-    def annotation_identity(self) -> str:
-        """Identity shown on every card without changing graph dispatch."""
-        if self.is_deepseek_r1_distill:
-            return (
-                f"DEEPSEEK-R1 DISTILL · "
-                f"{self.backbone_name.upper()} BACKBONE"
-            )
-        return self.backbone_name.upper()
-
-
 def _integer(
     metadata: dict[str, Any], key: str, *, required: bool = False
 ) -> int | None:

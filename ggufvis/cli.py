@@ -8,6 +8,7 @@ import sys
 import termios
 import tty
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from .diagram import Diagram, build_diagram
 from .gguf import GGUFError, read_gguf, read_gguf_url, resolve_ollama_model
@@ -79,11 +80,36 @@ def _human_bytes(value: int | None) -> str:
     return f"{value} B"
 
 
+def _source_header(
+    value: str, *, is_ollama: bool = False, is_remote: bool = False
+) -> str:
+    """Build the single persistent source line shown above the diagram."""
+    if is_ollama:
+        return f"Ollama: {value}"
+    if is_remote:
+        filename = unquote(Path(urlsplit(value).path).name)
+        return f"Remote: {filename or value}"
+    return f"GGUF: {Path(value).expanduser().name}"
+
+
+def _fit_header(header: str, width: int) -> str:
+    """Middle-truncate a source line while preserving its useful suffix."""
+    if len(header) <= width:
+        return header
+    if width <= 1:
+        return "…"[:width]
+    available = width - 1
+    left = (available + 1) // 2
+    right = available - left
+    return f"{header[:left]}…{header[-right:] if right else ''}"
+
+
 def _viewport(
     diagram: Diagram,
     step: int,
     use_color: bool,
     requested_start: int | None,
+    source_header: str,
 ) -> tuple[str, int]:
     terminal = shutil.get_terminal_size(
         fallback=(120, diagram.panels.canvas_height + 1)
@@ -96,12 +122,15 @@ def _viewport(
         canvas = render_diagram(diagram, step, annotation_position="below")
         stacked = True
     if terminal.columns < canvas.width:
+        header = _fit_header(source_header, terminal.columns)
         return (
+            f"{header}\n"
             f"Terminal is {terminal.columns} columns wide; this diagram needs "
             f"at least {canvas.width}. Widen the window, then press an arrow key.",
             0,
         )
 
+    header = _fit_header(source_header, terminal.columns)
     lines = canvas.render(use_color=use_color).splitlines()
     if stacked:
         # Keep the below-diagram card visible while the matrix viewport moves.
@@ -110,14 +139,15 @@ def _viewport(
         card_lines = lines[diagram.panels.canvas_height :]
         viewport_height = min(
             len(model_lines),
-            # Reserve one row for status and one for the narrow-layout tip.
-            max(4, terminal.lines - len(card_lines) - 2),
+            # Reserve rows for the header, status, and narrow-layout tip.
+            max(4, terminal.lines - len(card_lines) - 3),
         )
         last_start = max(0, len(model_lines) - viewport_height)
     else:
         model_lines = lines
         card_lines = []
-        viewport_height = min(len(lines), max(4, terminal.lines - 1))
+        # Reserve one row each for the persistent header and status.
+        viewport_height = min(len(lines), max(4, terminal.lines - 2))
         last_start = max(0, len(lines) - viewport_height)
     if requested_start is None:
         centered = diagram.operations[step].row - viewport_height // 2
@@ -137,12 +167,16 @@ def _viewport(
         tip = (
             "Tip: widen the terminal to place annotations beside the diagram."
         )
-        return f"{visible}\n{tip}\n{status}", start
-    return f"{visible}\n{status}", start
+        return f"{header}\n{visible}\n{tip}\n{status}", start
+    return f"{header}\n{visible}\n{status}", start
 
 
-def _run_interactive(diagram: Diagram, use_color: bool) -> None:
+def _run_interactive(
+    diagram: Diagram, use_color: bool, source_header: str
+) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
+        terminal_width = shutil.get_terminal_size(fallback=(120, 24)).columns
+        print(_fit_header(source_header, terminal_width))
         print(render_diagram(diagram, 0).render(use_color=use_color))
         print("Interactive mode requires a terminal. Use --static for one frame.")
         return
@@ -156,7 +190,7 @@ def _run_interactive(diagram: Diagram, use_color: bool) -> None:
         sys.stdout.write("\033[?1049h\033[?25l")
         while True:
             frame, actual_start = _viewport(
-                diagram, step, use_color, viewport_start
+                diagram, step, use_color, viewport_start, source_header
             )
             sys.stdout.write(
                 f"\033[2J\033[H{frame.replace(chr(10), chr(13) + chr(10))}"
@@ -206,6 +240,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         config = config_from_gguf(model)
         diagram = build_diagram(config)
+        source_header = _source_header(
+            args.gguf, is_ollama=args.ollama, is_remote=args.url
+        )
         if not 1 <= args.step <= len(diagram.operations):
             raise GGUFError(
                 f"--step must be between 1 and {len(diagram.operations)}"
@@ -215,13 +252,17 @@ def main(argv: list[str] | None = None) -> int:
 
         use_color = not args.no_color
         if args.static:
+            terminal_width = shutil.get_terminal_size(
+                fallback=(120, diagram.panels.canvas_height + 2)
+            ).columns
+            print(_fit_header(source_header, terminal_width))
             print(
                 render_diagram(diagram, args.step - 1).render(
                     use_color=use_color
                 )
             )
         else:
-            _run_interactive(diagram, use_color)
+            _run_interactive(diagram, use_color, source_header)
     except GGUFError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

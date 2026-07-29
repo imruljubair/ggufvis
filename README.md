@@ -71,6 +71,15 @@ narrow terminal, interactive mode automatically places the card below the
 diagram instead and shows a short tip that widening the terminal restores the
 side-by-side layout.
 
+One compact source line remains above the view. It shows the local GGUF
+filename, requested Ollama tag, or remote filename:
+
+```text
+Remote: DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf
+```
+
+Long source names are middle-truncated when the terminal is narrow.
+
 Ollama resolution is enabled only by `--ollama`. A normal positional argument
 is always interpreted as a filesystem path.
 
@@ -180,7 +189,7 @@ reuses the calculated sequence height.
 Every operation uses the same four fields:
 
 ```text
-┌─ [04/23] ATTENTION · QWEN3 ────────────────────────────┐
+┌─ [04/23] ATTENTION ────────────────────────────────────┐
 │ Operation: K per-head RMSNorm                          │
 │ Equation: K′[128×seq] = RMSNorm(K[128×seq]; γk[128×1]) │
 │ Tensor source: blk.b.attn_k_norm.weight                │
