@@ -13,6 +13,9 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
+from urllib.error import HTTPError, URLError
+from urllib.parse import unquote, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 
 class GGUFError(RuntimeError):
@@ -45,6 +48,9 @@ class GGUFModel:
     version: int
     metadata: dict[str, Any]
     tensors: tuple[TensorInfo, ...]
+    source_url: str | None = None
+    remote_bytes_transferred: int | None = None
+    remote_file_size: int | None = None
 
     def tensor(self, name: str) -> TensorInfo | None:
         return next((tensor for tensor in self.tensors if tensor.name == name), None)
@@ -99,6 +105,140 @@ TENSOR_TYPES = {
     34: "TQ1_0",
     35: "TQ2_0",
 }
+
+CONTENT_RANGE_PATTERN = re.compile(r"bytes (\d+)-(\d+)/(\d+|\*)")
+REMOTE_CHUNK_SIZE = 64 * 1024
+MAX_REMOTE_HEADER_BYTES = 256 * 1024 * 1024
+MAX_REMOTE_REQUESTS = 10_000
+
+
+def _normalize_remote_url(url: str) -> str:
+    """Validate HTTP(S) and convert Hugging Face browser links to raw links."""
+    parts = urlsplit(url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise GGUFError("remote GGUF URL must use http:// or https://")
+    path = parts.path
+    if parts.hostname and parts.hostname.endswith("huggingface.co"):
+        path = path.replace("/blob/", "/resolve/", 1)
+    return urlunsplit((parts.scheme, parts.netloc, path, parts.query, ""))
+
+
+class HTTPRangeSource:
+    """A seekable, in-memory view over an HTTP byte-range resource.
+
+    The GGUF reader mostly advances sequentially, but its metadata skipper can
+    jump over large arrays. Range requests make those seeks inexpensive and
+    ensure the tensor payload is never saved as a local file.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        *,
+        timeout: float = 20.0,
+        chunk_size: int = REMOTE_CHUNK_SIZE,
+        max_bytes: int = MAX_REMOTE_HEADER_BYTES,
+    ) -> None:
+        self.url = _normalize_remote_url(url)
+        self.timeout = timeout
+        self.chunk_size = max(4096, chunk_size)
+        self.max_bytes = max_bytes
+        self.position = 0
+        self.cache_start = 0
+        self.cache = b""
+        self.bytes_transferred = 0
+        self.total_size: int | None = None
+        self.request_count = 0
+        self.final_url = self.url
+
+        self.headers = {
+            "Accept-Encoding": "identity",
+            "User-Agent": "ggufvis/1.0",
+        }
+
+    def tell(self) -> int:
+        return self.position
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        if whence == 0:
+            position = offset
+        elif whence == 1:
+            position = self.position + offset
+        elif whence == 2 and self.total_size is not None:
+            position = self.total_size + offset
+        else:
+            raise GGUFError("unsupported remote seek operation")
+        if position < 0:
+            raise GGUFError("cannot seek before the start of a remote GGUF")
+        self.position = position
+        return self.position
+
+    def _fetch(self, start: int, minimum_size: int) -> None:
+        if self.request_count >= MAX_REMOTE_REQUESTS:
+            raise GGUFError("remote GGUF required too many HTTP range requests")
+        fetch_size = max(self.chunk_size, minimum_size)
+        end = start + fetch_size - 1
+        headers = dict(self.headers)
+        headers["Range"] = f"bytes={start}-{end}"
+        request = Request(self.url, headers=headers)
+        self.request_count += 1
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                status = getattr(response, "status", response.getcode())
+                if status != 206:
+                    raise GGUFError(
+                        "remote server did not honor HTTP byte ranges; use a "
+                        "direct GGUF URL whose server supports Range requests"
+                    )
+                content_range = response.headers.get("Content-Range", "")
+                match = CONTENT_RANGE_PATTERN.fullmatch(content_range.strip())
+                if match is None or int(match.group(1)) != start:
+                    raise GGUFError(
+                        f"invalid HTTP Content-Range {content_range!r}"
+                    )
+                total = match.group(3)
+                if total != "*":
+                    self.total_size = int(total)
+                data = response.read()
+                self.final_url = response.geturl()
+        except HTTPError as error:
+            if error.code == 416:
+                data = b""
+            else:
+                raise GGUFError(
+                    f"remote GGUF request failed with HTTP {error.code}"
+                ) from error
+        except URLError as error:
+            raise GGUFError(f"cannot read remote GGUF: {error.reason}") from error
+        except OSError as error:
+            raise GGUFError(f"cannot read remote GGUF: {error}") from error
+
+        self.bytes_transferred += len(data)
+        if self.bytes_transferred > self.max_bytes:
+            raise GGUFError(
+                "remote GGUF metadata/tensor descriptors exceeded the "
+                f"{self.max_bytes // (1024 * 1024)} MiB safety limit"
+            )
+        self.cache_start = start
+        self.cache = data
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            raise GGUFError("unbounded reads are disabled for remote GGUFs")
+        output = bytearray()
+        while len(output) < size:
+            cache_end = self.cache_start + len(self.cache)
+            if not (self.cache_start <= self.position < cache_end):
+                self._fetch(self.position, size - len(output))
+                cache_end = self.cache_start + len(self.cache)
+                if not self.cache:
+                    break
+            available = cache_end - self.position
+            take = min(size - len(output), available)
+            offset = self.position - self.cache_start
+            output.extend(self.cache[offset : offset + take])
+            self.position += take
+        return bytes(output)
 
 
 class _Reader:
@@ -159,49 +299,84 @@ class _Reader:
         raise GGUFError(f"unsupported GGUF array element type {value_type}")
 
 
+def _read_gguf_source(
+    source,
+    model_path: Path,
+    *,
+    source_url: str | None = None,
+    remote_bytes_transferred: int | None = None,
+    remote_file_size: int | None = None,
+) -> GGUFModel:
+    """Parse one local or remote seekable source through the same code path."""
+    reader = _Reader(source)
+    if reader.exact(4) != b"GGUF":
+        raise GGUFError(f"{model_path} is not a GGUF file")
+    version = reader.unpack("<I")
+    if version not in {2, 3}:
+        raise GGUFError(f"unsupported GGUF version {version}; expected 2 or 3")
+    tensor_count = reader.unpack("<Q")
+    metadata_count = reader.unpack("<Q")
+    if tensor_count > 10_000_000 or metadata_count > 10_000_000:
+        raise GGUFError("GGUF header declares implausibly many entries")
+
+    metadata: dict[str, Any] = {}
+    for _ in range(metadata_count):
+        key = reader.string()
+        metadata[key] = reader.value(reader.unpack("<I"))
+
+    tensors: list[TensorInfo] = []
+    for _ in range(tensor_count):
+        name = reader.string()
+        rank = reader.unpack("<I")
+        if rank > 16:
+            raise GGUFError(f"tensor {name!r} has implausible rank {rank}")
+        shape = tuple(reader.unpack("<Q") for _ in range(rank))
+        tensors.append(
+            TensorInfo(
+                name=name,
+                shape=shape,
+                type_id=reader.unpack("<I"),
+                offset=reader.unpack("<Q"),
+            )
+        )
+    return GGUFModel(
+        model_path,
+        version,
+        metadata,
+        tuple(tensors),
+        source_url=source_url,
+        remote_bytes_transferred=remote_bytes_transferred,
+        remote_file_size=remote_file_size,
+    )
+
+
 def read_gguf(path: str | Path) -> GGUFModel:
-    """Read metadata and tensor shapes without reading tensor data."""
+    """Read local metadata and tensor shapes without reading tensor data."""
     model_path = Path(path)
     try:
         with model_path.open("rb") as source:
-            reader = _Reader(source)
-            if reader.exact(4) != b"GGUF":
-                raise GGUFError(f"{model_path} is not a GGUF file")
-            version = reader.unpack("<I")
-            if version not in {2, 3}:
-                raise GGUFError(
-                    f"unsupported GGUF version {version}; expected 2 or 3"
-                )
-            tensor_count = reader.unpack("<Q")
-            metadata_count = reader.unpack("<Q")
-            if tensor_count > 10_000_000 or metadata_count > 10_000_000:
-                raise GGUFError("GGUF header declares implausibly many entries")
-
-            metadata: dict[str, Any] = {}
-            for _ in range(metadata_count):
-                key = reader.string()
-                metadata[key] = reader.value(reader.unpack("<I"))
-
-            tensors: list[TensorInfo] = []
-            for _ in range(tensor_count):
-                name = reader.string()
-                rank = reader.unpack("<I")
-                if rank > 16:
-                    raise GGUFError(
-                        f"tensor {name!r} has implausible rank {rank}"
-                    )
-                shape = tuple(reader.unpack("<Q") for _ in range(rank))
-                tensors.append(
-                    TensorInfo(
-                        name=name,
-                        shape=shape,
-                        type_id=reader.unpack("<I"),
-                        offset=reader.unpack("<Q"),
-                    )
-                )
+            return _read_gguf_source(source, model_path)
     except OSError as error:
         raise GGUFError(f"cannot read {model_path}: {error}") from error
-    return GGUFModel(model_path, version, metadata, tuple(tensors))
+
+
+def read_gguf_url(url: str) -> GGUFModel:
+    """Read a remote GGUF header through bounded, in-memory range requests."""
+    source = HTTPRangeSource(url)
+    normalized = source.url
+    filename = unquote(Path(urlsplit(normalized).path).name) or "remote.gguf"
+    # Remote counters are known only after parsing, so update the immutable
+    # result once the shared parser has stopped after tensor descriptors.
+    model = _read_gguf_source(source, Path(filename), source_url=normalized)
+    return GGUFModel(
+        model.path,
+        model.version,
+        model.metadata,
+        model.tensors,
+        source_url=source.final_url,
+        remote_bytes_transferred=source.bytes_transferred,
+        remote_file_size=source.total_size,
+    )
 
 
 MODEL_MEDIA_TYPE = "application/vnd.ollama.image.model"

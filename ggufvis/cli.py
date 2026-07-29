@@ -10,7 +10,7 @@ import tty
 from pathlib import Path
 
 from .diagram import Diagram, build_diagram
-from .gguf import GGUFError, read_gguf, resolve_ollama_model
+from .gguf import GGUFError, read_gguf, read_gguf_url, resolve_ollama_model
 from .model import config_from_gguf
 from .renderer import render_diagram
 from .terminal import read_key
@@ -25,12 +25,24 @@ def parser() -> argparse.ArgumentParser:
     )
     result.add_argument(
         "gguf",
-        help="GGUF path, or an installed Ollama model name with --ollama",
+        help=(
+            "local GGUF path, Ollama model name with --ollama, or direct "
+            "HTTP(S) GGUF link with --url"
+        ),
     )
-    result.add_argument(
+    source_mode = result.add_mutually_exclusive_group()
+    source_mode.add_argument(
         "--ollama",
         action="store_true",
         help="resolve the positional argument as an Ollama model name",
+    )
+    source_mode.add_argument(
+        "--url",
+        action="store_true",
+        help=(
+            "parse a remote GGUF through in-memory HTTP range requests "
+            "without saving the model"
+        ),
     )
     result.add_argument(
         "--ollama-models-dir",
@@ -53,6 +65,17 @@ def parser() -> argparse.ArgumentParser:
         help="1-based operation used by --static (default: 1)",
     )
     return result
+
+
+def _human_bytes(value: int | None) -> str:
+    if value is None:
+        return "unknown"
+    amount = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if amount < 1024 or unit == "TiB":
+            return f"{amount:.1f} {unit}" if unit != "B" else f"{int(amount)} B"
+        amount /= 1024
+    return f"{value} B"
 
 
 def _viewport(
@@ -162,12 +185,25 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.ollama_models_dir and not args.ollama:
             raise GGUFError("--ollama-models-dir requires --ollama")
-        path = (
-            resolve_ollama_model(args.gguf, args.ollama_models_dir)
-            if args.ollama
-            else Path(args.gguf).expanduser()
-        )
-        config = config_from_gguf(read_gguf(path))
+        if args.url:
+            model = read_gguf_url(args.gguf)
+        else:
+            path = (
+                resolve_ollama_model(args.gguf, args.ollama_models_dir)
+                if args.ollama
+                else Path(args.gguf).expanduser()
+            )
+            model = read_gguf(path)
+        if model.source_url:
+            print(
+                "remote: parsed metadata and "
+                f"{len(model.tensors)} tensor descriptors; transferred "
+                f"{_human_bytes(model.remote_bytes_transferred)} of "
+                f"{_human_bytes(model.remote_file_size)}; no local model "
+                "file created",
+                file=sys.stderr,
+            )
+        config = config_from_gguf(model)
         diagram = build_diagram(config)
         if not 1 <= args.step <= len(diagram.operations):
             raise GGUFError(

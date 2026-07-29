@@ -19,6 +19,7 @@ weights into memory.
 - Tied and untied language-model heads
 - Shape-aware annotation cards with canonical GGUF tensor sources
 - Direct access to installed Ollama models through `--ollama`
+- In-memory visualization from public HTTP/Hugging Face links through `--url`
 - No runtime dependencies outside the Python standard library
 
 ## Run
@@ -32,6 +33,16 @@ cd ggufvis
 python3 ggufvis.py /path/to/model.gguf
 python3 ggufvis.py --ollama qwen3
 ```
+
+Visualize a public remote GGUF without saving the full model:
+
+```bash
+python3 ggufvis.py --url \
+  https://huggingface.co/owner/repository/resolve/main/model.gguf
+```
+
+Hugging Face browser links containing `/blob/` are converted to `/resolve/`
+automatically.
 
 Or install an editable command:
 
@@ -61,6 +72,33 @@ side-by-side layout.
 
 Ollama resolution is enabled only by `--ollama`. A normal positional argument
 is always interpreted as a filesystem path.
+
+## Remote GGUF links
+
+`--url` uses bounded HTTP byte-range requests. Bytes are held in memory only,
+and parsing stops after the metadata and tensor-descriptor sections. The full
+model is not saved locally.
+
+The CLI reports both transferred bytes and remote file size:
+
+```text
+remote: parsed metadata and 48 tensor descriptors; transferred 64.0 KiB
+of 1.1 MiB; no local model file created
+```
+
+Some network transfer is unavoidable because metadata must be read. The exact
+amount depends on vocabulary metadata and tensor count, but it is normally much
+smaller than the tensor payload.
+
+Current remote-source requirements and limits:
+
+- The link must be a direct `http://` or `https://` GGUF resource.
+- The server must honor HTTP `Range` requests.
+- Public Hugging Face `blob` and `resolve` links are supported.
+- Private/gated repository authentication is not included in v1.
+- Split GGUF models are not yet combined.
+- Remote metadata/descriptor transfer is limited to 256 MiB.
+- No temporary GGUF file is created.
 
 ## Supported architectures
 
@@ -105,7 +143,7 @@ There are no imports from historical prototype versions.
 
 ## Data flow
 
-1. `gguf.py` reads metadata and tensor descriptors.
+1. `gguf.py` reads local or range-backed remote metadata and tensor descriptors.
 2. `model.py` normalizes architecture-specific metadata into `ModelConfig`.
 3. `diagram.py` pre-calculates all dimensions, matrix positions, and borders.
 4. `annotations.py` creates the four-part card for each operation.

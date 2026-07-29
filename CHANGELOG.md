@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- In-memory HTTP range reading for public remote/Hugging Face GGUF links
+- Automatic conversion of Hugging Face `/blob/` links to `/resolve/`
+- Remote byte-transfer and model-size reporting
+- Responsive below-diagram annotation cards for narrow terminals
+- Narrow-layout footnote suggesting the side-by-side wide-terminal view
+
 ## 1.0.0
 
 - Standalone metadata and tensor-descriptor GGUF reader

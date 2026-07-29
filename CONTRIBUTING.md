@@ -31,6 +31,9 @@ python ggufvis.py --ollama qwen3 --static --no-color
 Do not add GGUF model files to the repository. They are excluded by
 `.gitignore`.
 
+Remote-reader changes must pass the synthetic local HTTP range-server test.
+Tests and CI must not depend on external model hosting being available.
+
 ## Architecture additions
 
 New model families should:
