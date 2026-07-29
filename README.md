@@ -56,7 +56,8 @@ Interactive keys:
 
 On a wide terminal, the annotation card appears beside the matrix view. On a
 narrow terminal, interactive mode automatically places the card below the
-diagram instead.
+diagram instead and shows a short tip that widening the terminal restores the
+side-by-side layout.
 
 Ollama resolution is enabled only by `--ollama`. A normal positional argument
 is always interpreted as a filesystem path.

@@ -86,7 +86,8 @@ def _viewport(
         card_lines = lines[diagram.panels.canvas_height :]
         viewport_height = min(
             len(model_lines),
-            max(4, terminal.lines - len(card_lines) - 1),
+            # Reserve one row for status and one for the narrow-layout tip.
+            max(4, terminal.lines - len(card_lines) - 2),
         )
         last_start = max(0, len(model_lines) - viewport_height)
     else:
@@ -108,6 +109,11 @@ def _viewport(
         f"Rows {start + 1}-{end}/{len(model_lines)}  "
         "Up/Down: step  PgUp/PgDn: view  q: quit"
     )
+    if stacked:
+        tip = (
+            "Tip: widen the terminal to place annotations beside the diagram."
+        )
+        return f"{visible}\n{tip}\n{status}", start
     return f"{visible}\n{status}", start
 
 

@@ -111,6 +111,10 @@ class FinalV1Tests(unittest.TestCase):
         self.assertNotIn("Widen the window", frame)
         self.assertIn("[01/23] EMBEDDING", frame)
         self.assertIn("Tensor source: token_embd.weight", frame)
+        self.assertIn(
+            "Tip: widen the terminal to place annotations beside the diagram.",
+            frame,
+        )
 
     def test_mha_and_mqa_have_clean_non_nested_labels(self) -> None:
         base = config_from_gguf(_qwen3_model())
