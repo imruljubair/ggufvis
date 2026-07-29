@@ -190,7 +190,7 @@ def card_lines(diagram: Diagram, step: int) -> tuple[str, str, str, str]:
     result = diagram.operations[step].result
     return (
         f"[{step + 1:02d}/{len(diagram.operations):02d}] "
-        f"{SECTION_BY_RESULT[result]}",
+        f"{SECTION_BY_RESULT[result]} · {diagram.config.annotation_identity}",
         f"Operation: {OPERATION_BY_RESULT[result]}",
         f"Equation: {equation_for(diagram, result)}",
         f"Tensor source: {tensor_source_for(diagram, result)}",

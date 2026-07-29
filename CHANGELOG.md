@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+- Model-family identity on every annotation-card title
+- DeepSeek-R1 Distill cards continue to identify the separate GGUF backbone
+
+## 1.2.0
+
+- DeepSeek-R1 Distill identity detection from GGUF metadata
+- Qwen2, Qwen3, or Llama backbone-driven rendering for DeepSeek distills
+- Model/backbone labels in block titles and annotation cards
+- Explicit rejection of native DeepSeek architectures
+
 ## 1.1.0
 
 - In-memory HTTP range reading for public remote/Hugging Face GGUF links

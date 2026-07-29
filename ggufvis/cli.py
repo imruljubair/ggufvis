@@ -20,7 +20,8 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description=(
             "Render a standalone metadata-driven matrix diagram for dense "
-            "Llama, original Gemma, Qwen2/Qwen2.5, or Qwen3 GGUF models."
+            "Llama, original Gemma, Qwen2/Qwen2.5, Qwen3, or DeepSeek-R1 "
+            "Distill GGUF models."
         )
     )
     result.add_argument(

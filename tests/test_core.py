@@ -16,7 +16,7 @@ from unittest.mock import patch
 from ggufvis.cli import _viewport
 from ggufvis.annotations import card_lines
 from ggufvis.diagram import build_diagram
-from ggufvis.gguf import GGUFModel, TensorInfo, read_gguf_url
+from ggufvis.gguf import GGUFError, GGUFModel, TensorInfo, read_gguf_url
 from ggufvis.model import config_from_gguf
 from ggufvis.renderer import render_diagram
 
@@ -58,6 +58,36 @@ def _qwen3_model(*, tied: bool = False) -> GGUFModel:
     return GGUFModel(
         Path("synthetic-qwen3.gguf"), 3, metadata, tuple(tensors)
     )
+
+
+def _deepseek_qwen3_model() -> GGUFModel:
+    base = _qwen3_model()
+    metadata = dict(base.metadata)
+    # The current Ollama 8B tag uses this name and does not contain the
+    # literal word "Distill"; its qwen3 architecture still identifies the
+    # dense backbone on which the DeepSeek-R1 behavior was trained.
+    metadata["general.name"] = "DeepSeek-R1-0528-Qwen3-8B"
+    return GGUFModel(base.path, base.version, metadata, base.tensors)
+
+
+def _deepseek_llama_model() -> GGUFModel:
+    base = _qwen3_model()
+    metadata = {
+        key.replace("qwen3.", "llama."): value
+        for key, value in base.metadata.items()
+    }
+    metadata["general.architecture"] = "llama"
+    metadata["general.name"] = "DeepSeek-R1-Distill-Llama-70B"
+    tensors = tuple(
+        tensor
+        for tensor in base.tensors
+        if tensor.name
+        not in {
+            "blk.0.attn_q_norm.weight",
+            "blk.0.attn_k_norm.weight",
+        }
+    )
+    return GGUFModel(base.path, base.version, metadata, tensors)
 
 
 def _gguf_string(value: str) -> bytes:
@@ -112,6 +142,61 @@ class _RangeHandler(http.server.BaseHTTPRequestHandler):
 
 
 class FinalV1Tests(unittest.TestCase):
+    def test_deepseek_distill_uses_qwen_or_llama_backbone(self) -> None:
+        qwen = config_from_gguf(_deepseek_qwen3_model())
+        llama = config_from_gguf(_deepseek_llama_model())
+        qwen_diagram = build_diagram(qwen)
+        qwen_card = card_lines(qwen_diagram, 0)
+        qwen_render = render_diagram(qwen_diagram, 0).render(use_color=False)
+
+        self.assertTrue(qwen.is_deepseek_r1_distill)
+        self.assertEqual(qwen.architecture, "qwen3")
+        self.assertEqual(qwen.backbone_name, "Qwen3")
+        self.assertTrue(qwen.qk_norm)
+        self.assertIn(
+            "DeepSeek-R1 Distill (Qwen3) Block b ×36", qwen_render
+        )
+        self.assertEqual(
+            qwen_card[0],
+            "[01/23] EMBEDDING · DEEPSEEK-R1 DISTILL · QWEN3 BACKBONE",
+        )
+
+        self.assertTrue(llama.is_deepseek_r1_distill)
+        self.assertEqual(llama.architecture, "llama")
+        self.assertEqual(llama.backbone_name, "Llama")
+        self.assertFalse(llama.qk_norm)
+        self.assertEqual(len(build_diagram(llama).operations), 21)
+
+    def test_regular_models_show_their_family_on_annotation_cards(self) -> None:
+        base = config_from_gguf(_qwen3_model())
+        expected = {
+            "llama": "LLAMA",
+            "gemma": "GEMMA",
+            "qwen2": "QWEN2",
+            "qwen3": "QWEN3",
+        }
+
+        for architecture, identity in expected.items():
+            with self.subTest(architecture=architecture):
+                config = replace(
+                    base,
+                    architecture=architecture,
+                    is_deepseek_r1_distill=False,
+                )
+                title = card_lines(build_diagram(config), 0)[0]
+                self.assertEqual(title, f"[01/23] EMBEDDING · {identity}")
+
+    def test_native_deepseek_architecture_is_not_guessed(self) -> None:
+        base = _qwen3_model()
+        metadata = dict(base.metadata)
+        metadata["general.architecture"] = "deepseek2"
+        native = GGUFModel(base.path, base.version, metadata, base.tensors)
+
+        with self.assertRaisesRegex(
+            GGUFError, "native DeepSeek architecture"
+        ):
+            config_from_gguf(native)
+
     def test_qwen_dimensions_norms_and_annotations_are_integrated(self) -> None:
         config = config_from_gguf(_qwen3_model())
         diagram = build_diagram(config)
@@ -124,7 +209,7 @@ class FinalV1Tests(unittest.TestCase):
         self.assertEqual(len(diagram.operations), 23)
         self.assertEqual(diagram.height_for("seq"), 7)
         self.assertEqual(diagram.height_for("151936"), 7)
-        self.assertEqual(lines[0], "[04/23] ATTENTION")
+        self.assertEqual(lines[0], "[04/23] ATTENTION · QWEN3")
         self.assertIn("K′[128×seq]", lines[2])
         self.assertEqual(
             lines[3],
@@ -172,7 +257,7 @@ class FinalV1Tests(unittest.TestCase):
 
         self.assertLess(below.width, beside.width)
         self.assertGreater(below.height, beside.height)
-        self.assertIn("[01/23] EMBEDDING", below_text)
+        self.assertIn("[01/23] EMBEDDING · QWEN3", below_text)
         self.assertIn("Tensor source: token_embd.weight", below_text)
 
     def test_narrow_viewport_keeps_annotation_visible(self) -> None:
@@ -184,7 +269,7 @@ class FinalV1Tests(unittest.TestCase):
             frame, _ = _viewport(diagram, 0, False, None)
 
         self.assertNotIn("Widen the window", frame)
-        self.assertIn("[01/23] EMBEDDING", frame)
+        self.assertIn("[01/23] EMBEDDING · QWEN3", frame)
         self.assertIn("Tensor source: token_embd.weight", frame)
         self.assertIn(
             "Tip: widen the terminal to place annotations beside the diagram.",

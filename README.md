@@ -14,7 +14,7 @@ weights into memory.
 - Matrix-oriented transformer visualization with interactive stepping
 - Dimensions, head counts, and block counts derived from GGUF
 - MHA, GQA, and MQA attention layouts
-- Llama, original Gemma, Qwen2/Qwen2.5, and Qwen3 support
+- Llama, original Gemma, Qwen2/Qwen2.5, Qwen3, and DeepSeek-R1 Distill support
 - Qwen Q/K normalization and projection-bias detection
 - Tied and untied language-model heads
 - Shape-aware annotation cards with canonical GGUF tensor sources
@@ -32,6 +32,7 @@ cd ggufvis
 
 python3 ggufvis.py /path/to/model.gguf
 python3 ggufvis.py --ollama qwen3
+python3 ggufvis.py --ollama deepseek-r1:8b
 ```
 
 Visualize a public remote GGUF without saving the full model:
@@ -106,9 +107,16 @@ Current remote-source requirements and limits:
 - Original Gemma
 - Dense Qwen2 and Qwen2.5 (`general.architecture = qwen2`)
 - Dense Qwen3
+- DeepSeek-R1 Distill models with a dense Qwen2, Qwen3, or Llama backbone
 
-MoE architectures and later Gemma architectures are rejected explicitly
-instead of being rendered as if they were structurally identical.
+For DeepSeek-R1 Distill, the title identifies both the DeepSeek model and its
+actual backbone, for example `DeepSeek-R1 Distill (Qwen2)`. The backbone from
+`general.architecture` controls every matrix and dimension decision; the
+DeepSeek name never substitutes a guessed architecture.
+
+Native DeepSeek-R1/DeepSeek-V3, MoE architectures, and later Gemma
+architectures are rejected explicitly instead of being rendered as if they
+were structurally identical.
 
 ## Source layout
 
@@ -172,7 +180,7 @@ reuses the calculated sequence height.
 Every operation uses the same four fields:
 
 ```text
-┌─ [04/23] ATTENTION ────────────────────────────────────┐
+┌─ [04/23] ATTENTION · QWEN3 ────────────────────────────┐
 │ Operation: K per-head RMSNorm                          │
 │ Equation: K′[128×seq] = RMSNorm(K[128×seq]; γk[128×1]) │
 │ Tensor source: blk.b.attn_k_norm.weight                │

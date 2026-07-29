@@ -17,6 +17,7 @@ class ModelConfig:
 
     architecture: str
     name: str
+    is_deepseek_r1_distill: bool
     block_count: int
     hidden_size: int
     ffn_size: int
@@ -62,12 +63,30 @@ class ModelConfig:
 
     @property
     def family_name(self) -> str:
+        backbone = self.backbone_name
+        if self.is_deepseek_r1_distill:
+            return f"DeepSeek-R1 Distill ({backbone})"
+        return backbone
+
+    @property
+    def backbone_name(self) -> str:
+        """Human-readable name of the architecture that defines the graph."""
         return {
             "llama": "Llama",
             "gemma": "Gemma",
             "qwen2": "Qwen2",
             "qwen3": "Qwen3",
         }[self.architecture]
+
+    @property
+    def annotation_identity(self) -> str:
+        """Identity shown on every card without changing graph dispatch."""
+        if self.is_deepseek_r1_distill:
+            return (
+                f"DEEPSEEK-R1 DISTILL · "
+                f"{self.backbone_name.upper()} BACKBONE"
+            )
+        return self.backbone_name.upper()
 
 
 def _integer(
@@ -111,6 +130,38 @@ def _matrix_matches(
     if tensor is None or len(tensor.shape) != 2:
         return None
     return tensor.shape in {(first, second), (second, first)}
+
+
+def _is_deepseek_r1_distill(
+    metadata: dict[str, Any], architecture: str
+) -> bool:
+    """Recognize DeepSeek-R1 models carried by a supported dense backbone.
+
+    Some GGUFs include ``Distill`` in ``general.name`` while newer models such
+    as DeepSeek-R1-0528-Qwen3-8B do not.  A DeepSeek-R1 identity paired with a
+    supported Qwen/Llama architecture is sufficient: the architecture remains
+    the source of all dimensions and matrix-layout decisions.
+    """
+    identity_fields = (
+        "general.name",
+        "general.basename",
+        "general.finetune",
+        "general.description",
+    )
+    identity = " ".join(
+        value
+        for key in identity_fields
+        if isinstance((value := metadata.get(key)), str)
+    ).lower()
+    normalized = "".join(
+        character if character.isalnum() else " " for character in identity
+    )
+    words = normalized.split()
+    return (
+        architecture in {"llama", "qwen2", "qwen3"}
+        and "deepseek" in words
+        and "r1" in words
+    )
 
 
 def _find_vocab(model: GGUFModel, prefix: str, hidden: int) -> int:
@@ -159,6 +210,12 @@ def config_from_gguf(model: GGUFModel) -> ModelConfig:
         raise GGUFError(
             f"{architecture} is a Qwen MoE architecture; final v1 supports "
             "dense Qwen2/Qwen2.5/Qwen3"
+        )
+    if isinstance(architecture, str) and architecture.startswith("deepseek"):
+        raise GGUFError(
+            f"{architecture} is a native DeepSeek architecture; final v1 "
+            "supports DeepSeek-R1 Distill models only when their GGUF "
+            "backbone architecture is qwen2, qwen3, or llama"
         )
     if architecture not in SUPPORTED_ARCHITECTURES:
         raise GGUFError(
@@ -269,6 +326,7 @@ def config_from_gguf(model: GGUFModel) -> ModelConfig:
     return ModelConfig(
         architecture=prefix,
         name=name,
+        is_deepseek_r1_distill=_is_deepseek_r1_distill(metadata, prefix),
         block_count=blocks,
         hidden_size=hidden,
         ffn_size=ffn,
