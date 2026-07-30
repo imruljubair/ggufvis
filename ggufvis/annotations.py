@@ -80,8 +80,9 @@ def equation_for(diagram: Diagram, result: str) -> str:
             f"{shape('token_one_hot')}"
         ),
         "x": (
-            f"{shape('x')} = {shape('embedding_x')} if b=0; "
-            f"Block(b−1) output otherwise"
+            f"{diagram.matrix('x').label} = "
+            f"{diagram.matrix('embedding_x').label} when b=0; "
+            f"otherwise output of block b−1"
         ),
         "x_norm": (
             f"{shape('x_norm')} = RMSNorm({shape('x')}; {shape('gamma')})"

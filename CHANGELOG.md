@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- Shorter block-input conditional in the annotation card
+
 ## 1.4.0
 
 - Dedicated block-input navigation step highlighting `X₀ → Xᵦ`

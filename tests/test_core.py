@@ -232,8 +232,7 @@ class FinalV1Tests(unittest.TestCase):
             "Operation: Route hidden state into block",
         )
         self.assertIn(
-            "Xᵦ[4096×seq] = X₀[4096×seq] if b=0; "
-            "Block(b−1) output otherwise",
+            "Xᵦ = X₀ when b=0; otherwise output of block b−1",
             block_input_card[2],
         )
         self.assertEqual(
