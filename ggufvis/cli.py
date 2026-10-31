@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 from .diagram import Diagram, build_diagram
 from .gguf import GGUFError, read_gguf, read_gguf_url, resolve_ollama_model
+from .html import render_html
 from .model import config_from_gguf
 from .renderer import render_diagram
 from .terminal import read_key
@@ -65,6 +66,14 @@ def parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="1-based operation used by --static (default: 1)",
+    )
+    result.add_argument(
+        "--html",
+        metavar="PATH",
+        help=(
+            "write a self-contained interactive HTML visualization; "
+            "currently supported for Llama models only"
+        ),
     )
     return result
 
@@ -251,7 +260,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"warning: {warning}", file=sys.stderr)
 
         use_color = not args.no_color
-        if args.static:
+        if args.html:
+            if config.architecture != "llama":
+                raise GGUFError(
+                    "--html currently supports Llama models such as "
+                    "llama3.2 only"
+                )
+            output = Path(args.html).expanduser()
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(
+                render_html(
+                    diagram,
+                    source_header,
+                    initial_step=args.step - 1,
+                ),
+                encoding="utf-8",
+            )
+            print(f"wrote {output}")
+        elif args.static:
             terminal_width = shutil.get_terminal_size(
                 fallback=(120, diagram.panels.canvas_height + 2)
             ).columns

@@ -17,6 +17,7 @@ from ggufvis.cli import _fit_header, _source_header, _viewport
 from ggufvis.annotations import card_lines
 from ggufvis.diagram import build_diagram
 from ggufvis.gguf import GGUFError, GGUFModel, TensorInfo, read_gguf_url
+from ggufvis.html import canvas_fragment, render_html
 from ggufvis.model import config_from_gguf
 from ggufvis.renderer import render_diagram
 
@@ -142,6 +143,33 @@ class _RangeHandler(http.server.BaseHTTPRequestHandler):
 
 
 class FinalV1Tests(unittest.TestCase):
+    def test_llama_html_export_contains_all_interactive_frames(self) -> None:
+        config = replace(
+            config_from_gguf(_qwen3_model()),
+            architecture="llama",
+            name="Llama 3.2 3B Instruct",
+            is_deepseek_r1_distill=False,
+            qk_norm=False,
+        )
+        diagram = build_diagram(config)
+        document = render_html(diagram, "Ollama: llama3.2", initial_step=1)
+
+        self.assertIn("<!doctype html>", document)
+        self.assertIn("Llama 3.2 3B Instruct · ggufvis", document)
+        self.assertIn("Ollama: llama3.2", document)
+        self.assertIn("const frames =", document)
+        self.assertIn("let step = 1;", document)
+        self.assertIn("ArrowDown", document)
+        self.assertIn("[01/22] EMBEDDING", document)
+        self.assertIn("[22/22] FINAL", document)
+        self.assertIn("background:rgb(193 228 193)", document)
+
+    def test_html_export_rejects_non_llama_diagrams(self) -> None:
+        diagram = build_diagram(config_from_gguf(_qwen3_model()))
+
+        with self.assertRaisesRegex(ValueError, "Llama models only"):
+            render_html(diagram, "Ollama: qwen3")
+
     def test_deepseek_distill_uses_qwen_or_llama_backbone(self) -> None:
         qwen = config_from_gguf(_deepseek_qwen3_model())
         llama = config_from_gguf(_deepseek_llama_model())

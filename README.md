@@ -96,6 +96,17 @@ python3 ggufvis.py --ollama qwen3 --static --step 4
 python3 ggufvis.py --ollama qwen3 --static --step 4 --no-color
 ```
 
+Export the installed Llama 3.2 model as a self-contained interactive HTML
+file. The exported page keeps the same Unicode canvas, true-color cell styles,
+annotation cards, and operation stepping as the terminal view:
+
+```bash
+python3 ggufvis.py llama3.2 --ollama --html llama3.2.html
+```
+
+Open `llama3.2.html` in a browser and use the arrow buttons or arrow keys to
+move through all 22 operations. HTML export is limited to Llama models for now.
+
 Interactive keys:
 
 - `Down`: next operation
